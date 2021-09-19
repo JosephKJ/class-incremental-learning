@@ -20,7 +20,7 @@ from utils.misc import *
 from utils.process_fp import process_inputs_fp
 import torch.nn.functional as F
 
-def incremental_train_and_eval(the_args, epochs, fusion_vars, ref_fusion_vars, b1_model, ref_model, b2_model, ref_b2_model, tg_optimizer, tg_lr_scheduler, fusion_optimizer, fusion_lr_scheduler, trainloader, testloader, iteration, start_iteration, X_protoset_cumuls, Y_protoset_cumuls, order_list,lamda, dist, K, lw_mr, balancedloader, T=None, beta=None, fix_bn=False, weight_per_class=None, device=None):
+def incremental_train_and_eval(the_args, epochs, fusion_vars, ref_fusion_vars, b1_model, ref_model, b2_model, ref_b2_model, tg_optimizer, tg_lr_scheduler, fusion_optimizer, fusion_lr_scheduler, trainloader, testloader, iteration, start_iteration, X_protoset_cumuls, Y_protoset_cumuls, order_list,lamda, dist, K, lw_mr, balancedloader, T=None, beta=None, aligner=None, prev_valid_loader=None, fix_bn=False, weight_per_class=None, device=None):
 
     # Setting up the CUDA device
     if device is None:
@@ -36,6 +36,10 @@ def incremental_train_and_eval(the_args, epochs, fusion_vars, ref_fusion_vars, b
         ref_b2_model.eval()
 
     for epoch in range(epochs):
+        # Learn the EBM
+        if aligner is not None and epoch % the_args.ebm_update_freq == 0 and epoch != 0:
+            aligner.learn_ebm(ref_model, b1_model, trainloader, prev_valid_loader)
+
         # Start training for the current phase, set the two branch models to the training mode
         b1_model.train()
         b2_model.train()
@@ -50,6 +54,7 @@ def incremental_train_and_eval(the_args, epochs, fusion_vars, ref_fusion_vars, b
         train_loss = 0
         train_loss1 = 0
         train_loss2 = 0
+        train_ebm_loss = 0
         # Set the counters to zeros
         correct = 0
         total = 0
@@ -72,6 +77,7 @@ def incremental_train_and_eval(the_args, epochs, fusion_vars, ref_fusion_vars, b
 
             # Forward the samples in the deep networks
             outputs, _ = process_inputs_fp(the_args, fusion_vars, b1_model, b2_model, inputs)
+            _, z = b1_model(inputs, return_z_also=True)
 
             if iteration == start_iteration+1:
                 ref_outputs = ref_model(inputs)
@@ -82,8 +88,12 @@ def incremental_train_and_eval(the_args, epochs, fusion_vars, ref_fusion_vars, b
                 F.softmax(ref_outputs.detach()/T, dim=1)) * T * T * beta * num_old_classes
             # Loss 2: classification loss
             loss2 = nn.CrossEntropyLoss(weight_per_class)(outputs, targets)
+            # Loss 3: ebm loss
+            loss3 = 0
+            if aligner is not None and aligner.is_enabled:
+                loss3 = aligner.loss(z)
             # Sum up all looses
-            loss = loss1 + loss2
+            loss = loss1 + loss2 + loss3
 
             # Backward and update the parameters
             loss.backward()
@@ -93,12 +103,13 @@ def incremental_train_and_eval(the_args, epochs, fusion_vars, ref_fusion_vars, b
             train_loss += loss.item()
             train_loss1 += loss1.item()
             train_loss2 += loss2.item()
+            train_ebm_loss += loss3
             _, predicted = outputs.max(1)
             total += targets.size(0)
             correct += predicted.eq(targets).sum().item()
 
         # Print the training losses and accuracies
-        print('Train set: {}, train loss1: {:.4f}, train loss2: {:.4f}, train loss: {:.4f} accuracy: {:.4f}'.format(len(trainloader), train_loss1/(batch_idx+1), train_loss2/(batch_idx+1), train_loss/(batch_idx+1), 100.*correct/total))
+        print('Train set: {}, train loss1: {:.4f}, train loss2: {:.4f}, train ebm loss: {:.4f}, train loss: {:.4f} accuracy: {:.4f}'.format(len(trainloader), train_loss1/(batch_idx+1), train_loss2/(batch_idx+1), train_ebm_loss/(batch_idx+1), train_loss/(batch_idx+1), 100.*correct/total))
         
         # Update the aggregation weights
         b1_model.eval()
@@ -130,4 +141,4 @@ def incremental_train_and_eval(the_args, epochs, fusion_vars, ref_fusion_vars, b
         print('Test set: {} test loss: {:.4f} accuracy: {:.4f}'.format(len(testloader), test_loss/(batch_idx+1), 100.*correct/total))
 
     print("Removing register forward hook")
-    return b1_model, b2_model
+    return b1_model, b2_model, aligner

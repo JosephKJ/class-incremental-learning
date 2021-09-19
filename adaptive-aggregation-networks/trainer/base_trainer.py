@@ -42,6 +42,8 @@ from utils.imagenet.utils_dataset import merge_images_labels
 from utils.incremental.compute_features import compute_features
 from utils.incremental.compute_accuracy import compute_accuracy
 from utils.misc import process_mnemonics
+from utils.ebm_aligner import EBMAligner
+
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -59,6 +61,10 @@ class BaseTrainer(object):
         self.set_save_path()
         self.set_cuda_device()
         self.set_dataset_variables()
+
+        self.aligner = None
+        if self.args.enable_ebm_aligner:
+            self.aligner = EBMAligner()
 
     def set_save_path(self):
         """The function to set the saving path."""
@@ -545,6 +551,31 @@ class BaseTrainer(object):
         else:
             raise ValueError('Please set correct dataset.')
         return b1_model
+
+    def create_valid_loader(self, X_valid_cumul, map_Y_valid_cumul):
+        """The function to update the dataloaders
+        Args:
+          X_valid_cumuls: an array that contains old validation samples
+          map_Y_valid_cumul: mapped labels for X_valid_cumuls
+        Returns:
+          testloader: the test dataloader
+        """
+        print('Creating the dataloader for validation data')
+        if self.args.dataset == 'cifar100':
+            # Set the test dataloader
+            self.testset.data = X_valid_cumul.astype('uint8')
+            self.testset.targets = map_Y_valid_cumul
+            testloader = torch.utils.data.DataLoader(self.testset, batch_size=self.args.test_batch_size,
+                shuffle=False, num_workers=self.args.num_workers)
+        elif self.args.dataset == 'imagenet_sub' or self.args.dataset == 'imagenet':
+            # Set the test dataloader
+            current_test_imgs = merge_images_labels(X_valid_cumul, map_Y_valid_cumul)
+            self.testset.imgs = self.testset.samples = current_test_imgs
+            testloader = torch.utils.data.DataLoader(self.testset, batch_size=self.args.test_batch_size,
+                shuffle=False, num_workers=self.args.num_workers)
+        else:
+            raise ValueError('Please set correct dataset.')
+        return testloader
 
     def update_train_and_valid_loader(self, X_train, map_Y_train, X_valid_cumul, map_Y_valid_cumul, \
         iteration, start_iter):

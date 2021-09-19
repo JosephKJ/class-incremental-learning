@@ -100,6 +100,12 @@ class Trainer(BaseTrainer):
             b1_model, b2_model, ref_model, ref_b2_model, lambda_mult, cur_lambda, last_iter = self.init_current_phase_model(iteration, start_iter, b1_model, b2_model)
 
             ### Initialize datasets for the current phase
+            if len(X_valid_cumuls) > 0:
+                X_valid_cumul_prev = np.concatenate(X_valid_cumuls)
+                Y_valid_cumul_prev = np.concatenate(Y_valid_cumuls)
+                map_Y_valid_cumul_prev = np.array([order_list.index(i) for i in Y_valid_cumul_prev])
+                prev_valid_loader = self.create_valid_loader(X_valid_cumul_prev, map_Y_valid_cumul_prev)
+
             if iteration == start_iter:
                 indices_train_10, X_valid_cumul, X_train_cumul, Y_valid_cumul, Y_train_cumul, \
                     X_train_cumuls, Y_valid_cumuls, X_protoset_cumuls, Y_protoset_cumuls, X_valid_cumuls, Y_valid_cumuls, \
@@ -155,13 +161,13 @@ class Trainer(BaseTrainer):
                         b1_model, b2_model = incremental_train_and_eval_lucir(self.args, self.args.epochs, self.fusion_vars, \
                             self.ref_fusion_vars, b1_model, ref_model, b2_model, ref_b2_model, tg_optimizer, tg_lr_scheduler, \
                             fusion_optimizer, fusion_lr_scheduler, trainloader, testloader, iteration, start_iter, \
-                            X_protoset_cumuls, Y_protoset_cumuls, order_list, cur_lambda, self.args.dist, self.args.K, self.args.lw_mr, balancedloader)    
+                            X_protoset_cumuls, Y_protoset_cumuls, order_list, cur_lambda, self.args.dist, self.args.K, self.args.lw_mr, balancedloader, prev_valid_loader)
                     elif self.args.baseline == 'icarl':
-                        b1_model, b2_model = incremental_train_and_eval_icarl(self.args, self.args.epochs, self.fusion_vars, \
+                        b1_model, b2_model, self.aligner = incremental_train_and_eval_icarl(self.args, self.args.epochs, self.fusion_vars, \
                             self.ref_fusion_vars, b1_model, ref_model, b2_model, ref_b2_model, tg_optimizer, tg_lr_scheduler, \
                             fusion_optimizer, fusion_lr_scheduler, trainloader, testloader, iteration, start_iter, \
                             X_protoset_cumuls, Y_protoset_cumuls, order_list, cur_lambda, self.args.dist, self.args.K, self.args.lw_mr, balancedloader, \
-                            self.args.icarl_T, self.args.icarl_beta)
+                            self.args.icarl_T, self.args.icarl_beta, aligner=self.aligner, prev_valid_loader=prev_valid_loader)
                     else:
                         raise ValueError('Please set the correct baseline.')       
                 else:         

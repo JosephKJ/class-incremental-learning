@@ -51,7 +51,7 @@ def map_labels(order_list, Y_set):
 def incremental_train_and_eval(the_args, epochs, fusion_vars, ref_fusion_vars, b1_model, ref_model, b2_model, ref_b2_model, \
     tg_optimizer, tg_lr_scheduler, fusion_optimizer, fusion_lr_scheduler, trainloader, testloader, iteration, \
     start_iteration, X_protoset_cumuls, Y_protoset_cumuls, order_list, the_lambda, dist, \
-    K, lw_mr, balancedloader, fix_bn=False, weight_per_class=None, device=None):
+    K, lw_mr, balancedloader, prev_valid_loader=None, fix_bn=False, weight_per_class=None, device=None):
 
     # Setting up the CUDA device
     if device is None:

@@ -22,8 +22,8 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', default='cifar100', type=str, choices=['cifar100', 'imagenet_sub', 'imagenet'])
     parser.add_argument('--data_dir', default='data/seed_1993_subset_100_imagenet/data', type=str)
     parser.add_argument('--baseline', default='lucir', type=str, choices=['lucir', 'icarl'], help='baseline method')
-    parser.add_argument('--ckpt_label', type=str, default='exp01', help='the label for the checkpoints')
-    parser.add_argument('--ckpt_dir_fg', type=str, default='-', help='the checkpoint file for the 0-th phase')
+    parser.add_argument('--ckpt_label', type=str, default='exp02', help='the label for the checkpoints')
+    parser.add_argument('--ckpt_dir_fg', type=str, default='/home/joseph/workspace/class-incremental-learning/adaptive-aggregation-networks/zeroth.pt', help='the checkpoint file for the 0-th phase')
     parser.add_argument('--resume_fg', action='store_true', help='resume 0-th phase model from the checkpoint')
     parser.add_argument('--resume', action='store_true', help='resume from the checkpoints')
     parser.add_argument('--num_workers', default=8, type=int, help='the number of workers for loading data')
@@ -64,6 +64,10 @@ if __name__ == '__main__':
     ### iCaRL parameters
     parser.add_argument('--icarl_beta', default=0.25, type=float, help='beta for iCaRL')
     parser.add_argument('--icarl_T', default=2, type=int, help='T for iCaRL')
+
+    ### EBM Aligner parameters
+    parser.add_argument('--enable_ebm_aligner', action='store_true', help='enable EBM based alignment')
+    parser.add_argument('--ebm_update_freq', default=50, type=int, help='Frequency (as epochs) at which EBM is updated')
 
     the_args = parser.parse_args()
 

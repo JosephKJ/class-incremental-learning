@@ -90,4 +90,6 @@ def incremental_train_and_eval_zeroth_phase(the_args, epochs, b1_model, ref_mode
                 correct += predicted.eq(targets).sum().item()
         print('Test set: {} test loss: {:.4f} accuracy: {:.4f}'.format(len(testloader), test_loss/(batch_idx+1), 100.*correct/total))
 
+    if len(the_args.ckpt_dir_fg) > 0:
+        torch.save(b1_model, the_args.ckpt_dir_fg)
     return b1_model

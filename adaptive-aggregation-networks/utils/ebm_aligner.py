@@ -6,16 +6,16 @@ class EBMAligner:
     """Manages the lifecycle of the proposed Energy Based Latent Alignment.
     """
     def __init__(self):
-        self.enabled = False
+        self.is_enabled = False
 
         # Configs of the EBM model
-        self.ebm_latent_dim = 32
+        self.ebm_latent_dim = 64
         self.ebm_n_layers = 1
         self.ebm_n_hidden_layers = 64
         self.ebm_ema = None
 
         # EBM Learning configs
-        self.max_iter = 30000
+        self.max_iter = 15000
         self.ebm_lr = 0.0001
         self.n_langevin_steps = 30
         self.langevin_lr = 0.1
@@ -128,7 +128,7 @@ class EBMAligner:
 
             iterations += 1
 
-        self.enabled = True
+        self.is_enabled = True
 
     def evaluate(self, previous_model, current_model, validation_data):
         previous_model.eval()
@@ -141,7 +141,7 @@ class EBMAligner:
             _, current_z = current_model(inputs, return_z_also=True)
             aligned_z = self.align_latents(current_z)
 
-            output = previous_model.clf(aligned_z)
+            output = previous_model.fc(aligned_z)
             accuracy = self.compute_accuracy(output, labels)[0].item()
             accuracy_metric.update(accuracy)
 
