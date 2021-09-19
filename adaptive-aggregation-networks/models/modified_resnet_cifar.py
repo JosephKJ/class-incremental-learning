@@ -95,7 +95,7 @@ class ResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward(self, x, return_z_also=False):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -105,10 +105,13 @@ class ResNet(nn.Module):
         x = self.layer3(x)
 
         x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
+        z = x.view(x.size(0), -1)
+        x = self.fc(z)
 
-        return x
+        if return_z_also:
+            return x, z
+        else:
+            return x
 
 def resnet20(pretrained=False, **kwargs):
     n = 3
