@@ -66,8 +66,11 @@ if __name__ == '__main__':
     parser.add_argument('--icarl_T', default=2, type=int, help='T for iCaRL')
 
     ### EBM Aligner parameters
+    parser.add_argument('--enable_ebm', action='store_true', help='enable EBM based alignment')
     parser.add_argument('--enable_ebm_aligner', action='store_true', help='enable EBM based alignment')
-    parser.add_argument('--ebm_update_freq', default=50, type=int, help='Frequency (as epochs) at which EBM is updated')
+    parser.add_argument('--enable_ebm_distiller', action='store_true', help='enable EBM based alignment')
+    parser.add_argument('--ebm_update_freq', default=100, type=int, help='Frequency (as epochs) at which EBM is updated')
+    parser.add_argument('--ebm_start_epoch', default=30, type=int, help='Epoch to initialize the EBM losses')
 
     the_args = parser.parse_args()
 

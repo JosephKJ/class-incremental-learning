@@ -63,7 +63,7 @@ class BaseTrainer(object):
         self.set_dataset_variables()
 
         self.aligner = None
-        if self.args.enable_ebm_aligner:
+        if self.args.enable_ebm:
             self.aligner = EBMAligner()
 
     def set_save_path(self):
@@ -460,16 +460,29 @@ class BaseTrainer(object):
         # Generate the mapped labels, according the order list
         map_Y_train = np.array([order_list.index(i) for i in Y_train])
         map_Y_valid_cumul = np.array([order_list.index(i) for i in Y_valid_cumul])
-    
+
+        # Retrieve only the current task data (without exemplars)
+        X_train_only_new = X_train_total[indices_train_10]
+        Y_train_only_new = Y_train_total[indices_train_10]
+        map_Y_train_only_new = np.array([order_list.index(i) for i in Y_train_only_new])
+
         # Return different variables for different phases
         if iteration == start_iter:
-            return indices_train_10, X_valid_cumul, X_train_cumul, Y_valid_cumul, Y_train_cumul, X_train_cumuls, Y_valid_cumuls, \
+            return X_train_only_new, map_Y_train_only_new, indices_train_10, X_valid_cumul, X_train_cumul, Y_valid_cumul, Y_train_cumul, X_train_cumuls, Y_valid_cumuls, \
                 X_protoset_cumuls, Y_protoset_cumuls, X_valid_cumuls, Y_valid_cumuls, X_train, map_Y_train, \
                 map_Y_valid_cumul, X_valid_ori, Y_valid_ori
         else:
-            return indices_train_10, X_valid_cumul, X_train_cumul, Y_valid_cumul, Y_train_cumul, X_train_cumuls, Y_valid_cumuls, \
+            return X_train_only_new, map_Y_train_only_new, indices_train_10, X_valid_cumul, X_train_cumul, Y_valid_cumul, Y_train_cumul, X_train_cumuls, Y_valid_cumuls, \
                 X_protoset_cumuls, Y_protoset_cumuls, X_valid_cumuls, Y_valid_cumuls, X_train, map_Y_train, \
                 map_Y_valid_cumul, X_protoset, Y_protoset
+        # if iteration == start_iter:
+        #     return indices_train_10, X_valid_cumul, X_train_cumul, Y_valid_cumul, Y_train_cumul, X_train_cumuls, Y_valid_cumuls, \
+        #         X_protoset_cumuls, Y_protoset_cumuls, X_valid_cumuls, Y_valid_cumuls, X_train, map_Y_train, \
+        #         map_Y_valid_cumul, X_valid_ori, Y_valid_ori, X_train_only_new, map_Y_train_only_new
+        # else:
+        #     return indices_train_10, X_valid_cumul, X_train_cumul, Y_valid_cumul, Y_train_cumul, X_train_cumuls, Y_valid_cumuls, \
+        #         X_protoset_cumuls, Y_protoset_cumuls, X_valid_cumuls, Y_valid_cumuls, X_train, map_Y_train, \
+        #         map_Y_valid_cumul, X_protoset, Y_protoset, X_train_only_new, map_Y_train_only_new
 
     def imprint_weights(self, b1_model, b2_model, iteration, is_start_iteration, X_train, map_Y_train, dictionary_size):
         """The function to imprint FC classifier's weights 
@@ -563,19 +576,48 @@ class BaseTrainer(object):
         print('Creating the dataloader for validation data')
         if self.args.dataset == 'cifar100':
             # Set the test dataloader
-            self.testset.data = X_valid_cumul.astype('uint8')
-            self.testset.targets = map_Y_valid_cumul
-            testloader = torch.utils.data.DataLoader(self.testset, batch_size=self.args.test_batch_size,
+            test_set_temp = copy.deepcopy(self.testset)
+            test_set_temp.data = X_valid_cumul.astype('uint8')
+            test_set_temp.targets = map_Y_valid_cumul
+            testloader = torch.utils.data.DataLoader(test_set_temp, batch_size=self.args.test_batch_size,
                 shuffle=False, num_workers=self.args.num_workers)
         elif self.args.dataset == 'imagenet_sub' or self.args.dataset == 'imagenet':
             # Set the test dataloader
             current_test_imgs = merge_images_labels(X_valid_cumul, map_Y_valid_cumul)
-            self.testset.imgs = self.testset.samples = current_test_imgs
-            testloader = torch.utils.data.DataLoader(self.testset, batch_size=self.args.test_batch_size,
+            test_set_temp = copy.deepcopy(self.testset)
+            test_set_temp.imgs = test_set_temp.samples = current_test_imgs
+            testloader = torch.utils.data.DataLoader(test_set_temp, batch_size=self.args.test_batch_size,
                 shuffle=False, num_workers=self.args.num_workers)
         else:
             raise ValueError('Please set correct dataset.')
         return testloader
+
+    def create_train_loader(self, X_train, map_Y_train):
+        """The function to update the dataloaders
+        Args:
+          X_train: current-phase training samples, including new-class samples and old-class exemplars
+          map_Y_train: mapped labels for X_train
+        Returns:
+          trainloader: the training dataloader
+        """
+        print('Creating the dataloader for training data')
+        if self.args.dataset == 'cifar100':
+            # Set the training dataloader
+            train_set_temp = copy.deepcopy(self.trainset)
+            train_set_temp.data = X_train.astype('uint8')
+            train_set_temp.targets = map_Y_train
+            trainloader = torch.utils.data.DataLoader(train_set_temp, batch_size=self.args.train_batch_size,
+                shuffle=True, num_workers=self.args.num_workers)
+        elif self.args.dataset == 'imagenet_sub' or self.args.dataset == 'imagenet':
+            # Set the training dataloader
+            train_set_temp = copy.deepcopy(self.trainset)
+            current_train_imgs = merge_images_labels(X_train, map_Y_train)
+            train_set_temp.imgs = train_set_temp.samples = current_train_imgs
+            trainloader = torch.utils.data.DataLoader(train_set_temp, batch_size=self.args.train_batch_size,
+                shuffle=True, num_workers=self.args.num_workers, pin_memory=True)
+        else:
+            raise ValueError('Please set correct dataset.')
+        return trainloader
 
     def update_train_and_valid_loader(self, X_train, map_Y_train, X_valid_cumul, map_Y_valid_cumul, \
         iteration, start_iter):

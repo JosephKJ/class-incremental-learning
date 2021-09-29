@@ -16,8 +16,11 @@ import torch.nn as nn
 import torchvision
 from torch.optim import lr_scheduler
 from torchvision import datasets, models, transforms
+import torch.nn.functional as F
+
 from utils.misc import *
 from utils.process_fp import process_inputs_fp
+from utils.ebm_aligner import EBMAligner
 
 cur_features = []
 ref_features = []
@@ -49,7 +52,7 @@ def map_labels(order_list, Y_set):
 
 
 def incremental_train_and_eval(the_args, epochs, fusion_vars, ref_fusion_vars, b1_model, ref_model, b2_model, ref_b2_model, \
-    tg_optimizer, tg_lr_scheduler, fusion_optimizer, fusion_lr_scheduler, trainloader, testloader, iteration, \
+    tg_optimizer, tg_lr_scheduler, fusion_optimizer, fusion_lr_scheduler, trainloader, testloader, new_data_trainloader, iteration, \
     start_iteration, X_protoset_cumuls, Y_protoset_cumuls, order_list, the_lambda, dist, \
     K, lw_mr, balancedloader, prev_valid_loader=None, fix_bn=False, weight_per_class=None, device=None):
 
@@ -72,7 +75,17 @@ def incremental_train_and_eval(the_args, epochs, fusion_vars, ref_fusion_vars, b
     if iteration > start_iteration+1:
         ref_b2_model.eval()
 
+    aligner = None
+    if the_args.enable_ebm:
+        aligner = EBMAligner()
+
     for epoch in range(epochs):
+        # Learn the EBM
+        if aligner is not None and epoch == the_args.ebm_start_epoch:
+            aligner.learn_ebm(ref_model, b1_model, new_data_trainloader, prev_valid_loader)
+        elif aligner is not None and epoch % the_args.ebm_update_freq == 0 and epoch != 0:
+            aligner.learn_ebm(ref_model, b1_model, new_data_trainloader, prev_valid_loader)
+
         # Start training for the current phase, set the two branch models to the training mode
         b1_model.train()
         b2_model.train()
@@ -88,9 +101,14 @@ def incremental_train_and_eval(the_args, epochs, fusion_vars, ref_fusion_vars, b
         train_loss1 = 0
         train_loss2 = 0
         train_loss3 = 0
+        train_ebm_aligner_loss = 0
+        train_ebm_distiller_loss = 0
+
         # Set the counters to zeros
         correct = 0
         total = 0
+        T = the_args.icarl_T
+        beta = the_args.icarl_beta
     
         # Learning rate decay
         tg_lr_scheduler.step()
@@ -110,7 +128,8 @@ def incremental_train_and_eval(the_args, epochs, fusion_vars, ref_fusion_vars, b
 
             # Forward the samples in the deep networks
             outputs, _ = process_inputs_fp(the_args, fusion_vars, b1_model, b2_model, inputs)
-    
+            _, z = b1_model(inputs, return_z_also=True)
+
             # Loss 1: feature-level distillation loss
             if iteration == start_iteration+1:
                 ref_outputs = ref_model(inputs)
@@ -140,8 +159,21 @@ def incremental_train_and_eval(the_args, epochs, fusion_vars, ref_fusion_vars, b
             else:
                 loss3 = torch.zeros(1).to(device)
 
+            # Loss 4: ebm loss (latent alignment)
+            loss4 = torch.zeros(1).to(device)
+            if aligner is not None and aligner.is_enabled and the_args.enable_ebm_aligner:
+                loss4 = aligner.loss(z)
+
+            # Loss 5: ebm loss (latent distiller)
+            loss5 = torch.zeros(1).to(device)
+            if aligner is not None and aligner.is_enabled and the_args.enable_ebm_distiller:
+                aligned_z = aligner.align_latents(z).clone().detach()
+                loss5 = nn.KLDivLoss()(F.log_softmax(outputs[:, :num_old_classes] / T, dim=1),
+                                       F.softmax(ref_model.fc(aligned_z).detach() / T, dim=1)) * T * T * beta * num_old_classes
+
+
             # Sum up all looses
-            loss = loss1 + loss2 + loss3
+            loss = loss1 + loss2 + loss3 + loss4 + loss5
 
             # Backward and update the parameters
             loss.backward()
@@ -152,12 +184,15 @@ def incremental_train_and_eval(the_args, epochs, fusion_vars, ref_fusion_vars, b
             train_loss1 += loss1.item()
             train_loss2 += loss2.item()
             train_loss3 += loss3.item()
+            train_ebm_aligner_loss += loss4.item()
+            train_ebm_distiller_loss += loss5.item()
+
             _, predicted = outputs.max(1)
             total += targets.size(0)
             correct += predicted.eq(targets).sum().item()
 
         # Print the training losses and accuracies
-        print('Train set: {}, train loss1: {:.4f}, train loss2: {:.4f}, train loss3: {:.4f}, train loss: {:.4f} accuracy: {:.4f}'.format(len(trainloader), train_loss1/(batch_idx+1), train_loss2/(batch_idx+1), train_loss3/(batch_idx+1), train_loss/(batch_idx+1), 100.*correct/total))
+        print('Train set: {}, train loss1: {:.4f}, train loss2: {:.4f}, train loss3: {:.4f}, ebm aligner: {:.4f}, ebm distiller: {:.4f}, train loss: {:.4f} accuracy: {:.4f}'.format(len(trainloader), train_loss1/(batch_idx+1), train_loss2/(batch_idx+1), train_loss3/(batch_idx+1), train_ebm_aligner_loss/(batch_idx+1), train_ebm_distiller_loss/(batch_idx+1), train_loss/(batch_idx+1), 100.*correct/total))
         
         # Update the aggregation weights
         b1_model.eval()

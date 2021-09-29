@@ -10,19 +10,19 @@ class EBMAligner:
 
         # Configs of the EBM model
         self.ebm_latent_dim = 64
-        self.ebm_n_layers = 1
+        self.ebm_n_layers = 2
         self.ebm_n_hidden_layers = 64
         self.ebm_ema = None
 
         # EBM Learning configs
-        self.max_iter = 15000
+        self.max_iter = 5000
         self.ebm_lr = 0.0001
         self.n_langevin_steps = 30
         self.langevin_lr = 0.1
         self.ema_decay = 0.89
 
         # EBM Loss config
-        self.alpha = 1.0
+        self.alpha = 0.1
 
     def ema(self, model1, model2, decay=0.999):
         par1 = dict(model1.named_parameters())
@@ -78,11 +78,11 @@ class EBMAligner:
         """
         ebm = EBM(latent_dim=self.ebm_latent_dim, n_layer=self.ebm_n_layers,
                        n_hidden=self.ebm_n_hidden_layers).cuda()
-        if self.ebm_ema is None:
-            self.ebm_ema = EBM(latent_dim=self.ebm_latent_dim, n_layer=self.ebm_n_layers,
-                               n_hidden=self.ebm_n_hidden_layers).cuda()
-            # Initialize the exponential moving average of the EBM.
-            self.ema(self.ebm_ema, ebm, decay=0.)
+        # if self.ebm_ema is None:
+        self.ebm_ema = EBM(latent_dim=self.ebm_latent_dim, n_layer=self.ebm_n_layers,
+                           n_hidden=self.ebm_n_hidden_layers).cuda()
+        # Initialize the exponential moving average of the EBM.
+        self.ema(self.ebm_ema, ebm, decay=0.)
 
         ebm_optimizer = torch.optim.RMSprop(ebm.parameters(), lr=self.ebm_lr)
 

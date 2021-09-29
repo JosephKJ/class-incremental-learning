@@ -107,14 +107,14 @@ class Trainer(BaseTrainer):
                 prev_valid_loader = self.create_valid_loader(X_valid_cumul_prev, map_Y_valid_cumul_prev)
 
             if iteration == start_iter:
-                indices_train_10, X_valid_cumul, X_train_cumul, Y_valid_cumul, Y_train_cumul, \
+                X_train_only_new, map_Y_train_only_new, indices_train_10, X_valid_cumul, X_train_cumul, Y_valid_cumul, Y_train_cumul, \
                     X_train_cumuls, Y_valid_cumuls, X_protoset_cumuls, Y_protoset_cumuls, X_valid_cumuls, Y_valid_cumuls, \
                     X_train, map_Y_train, map_Y_valid_cumul, X_valid_ori, Y_valid_ori = \
                     self.init_current_phase_dataset(iteration, \
                     start_iter, last_iter, order, order_list, X_train_total, Y_train_total, X_valid_total, Y_valid_total, \
                     X_train_cumuls, Y_train_cumuls, X_valid_cumuls, Y_valid_cumuls, X_protoset_cumuls, Y_protoset_cumuls)
             else:
-                indices_train_10, X_valid_cumul, X_train_cumul, Y_valid_cumul, Y_train_cumul, \
+                X_train_only_new, map_Y_train_only_new, indices_train_10, X_valid_cumul, X_train_cumul, Y_valid_cumul, Y_train_cumul, \
                     X_train_cumuls, Y_valid_cumuls, X_protoset_cumuls, Y_protoset_cumuls, X_valid_cumuls, Y_valid_cumuls, \
                     X_train, map_Y_train, map_Y_valid_cumul, X_protoset, Y_protoset = \
                     self.init_current_phase_dataset(iteration, \
@@ -130,6 +130,7 @@ class Trainer(BaseTrainer):
             # Update training and test dataloader
             trainloader, testloader = self.update_train_and_valid_loader(X_train, map_Y_train, X_valid_cumul, map_Y_valid_cumul, \
                 iteration, start_iter)
+            new_data_trainloader = self.create_train_loader(X_train_only_new, map_Y_train_only_new)
 
             # Set the names for the checkpoints
             ckp_name = osp.join(self.save_path, 'iter_{}_b1.pth'.format(iteration))
@@ -160,12 +161,12 @@ class Trainer(BaseTrainer):
                     if self.args.baseline == 'lucir':
                         b1_model, b2_model = incremental_train_and_eval_lucir(self.args, self.args.epochs, self.fusion_vars, \
                             self.ref_fusion_vars, b1_model, ref_model, b2_model, ref_b2_model, tg_optimizer, tg_lr_scheduler, \
-                            fusion_optimizer, fusion_lr_scheduler, trainloader, testloader, iteration, start_iter, \
-                            X_protoset_cumuls, Y_protoset_cumuls, order_list, cur_lambda, self.args.dist, self.args.K, self.args.lw_mr, balancedloader, prev_valid_loader)
+                            fusion_optimizer, fusion_lr_scheduler, trainloader, testloader, new_data_trainloader, iteration, start_iter, \
+                            X_protoset_cumuls, Y_protoset_cumuls, order_list, cur_lambda, self.args.dist, self.args.K, self.args.lw_mr, balancedloader, prev_valid_loader=prev_valid_loader)
                     elif self.args.baseline == 'icarl':
                         b1_model, b2_model, self.aligner = incremental_train_and_eval_icarl(self.args, self.args.epochs, self.fusion_vars, \
                             self.ref_fusion_vars, b1_model, ref_model, b2_model, ref_b2_model, tg_optimizer, tg_lr_scheduler, \
-                            fusion_optimizer, fusion_lr_scheduler, trainloader, testloader, iteration, start_iter, \
+                            fusion_optimizer, fusion_lr_scheduler, trainloader, testloader, new_data_trainloader, iteration, start_iter, \
                             X_protoset_cumuls, Y_protoset_cumuls, order_list, cur_lambda, self.args.dist, self.args.K, self.args.lw_mr, balancedloader, \
                             self.args.icarl_T, self.args.icarl_beta, aligner=self.aligner, prev_valid_loader=prev_valid_loader)
                     else:
